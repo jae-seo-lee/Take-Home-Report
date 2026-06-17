@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>업무지구 성공과 실패 진단: 판교 vs 청라 비교분석 시스템</title>
+
+    <!-- Google Fonts, Leaflet, and Chart.js -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        :root {
+            --bg-dark: #090d16;
+            --bg-glass: rgba(13, 20, 35, 0.85);
+            --bg-glass-active: rgba(23, 37, 68, 0.95);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --color-primary: #3b82f6;
+            --color-primary-glow: rgba(59, 130, 246, 0.3);
+            --color-secondary: #f97316;
+            --color-secondary-glow: rgba(249, 115, 22, 0.3);
+            
+            /* 용도별 색상 */
+            --use-office: #3b82f6;
+            --use-edu: #8b5cf6;
+            --use-residential: #ef4444;
+            --use-commercial: #10b981;
+            --use-etc: #6b7280;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', 'Noto Sans KR', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow: hidden;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* 대시보드 사이드바 */
+        .sidebar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 440px;
+            max-height: calc(100vh - 40px);
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-glass);
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            padding: 24px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .sidebar::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+        }
+
+        header {
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0 0 6px 0;
+            line-height: 1.3;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin: 0;
+            font-weight: 500;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #60a5fa;
+            margin: 24px 0 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .section-title::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 14px;
+            background: var(--color-primary);
+            border-radius: 2px;
+        }
+
+        /* 컨트롤 패널 */
+        .control-group {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .control-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .btn-toggle-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-toggle {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            color: var(--text-main);
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            text-align: center;
+        }
+
+        .btn-toggle:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-toggle.active-pg {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            box-shadow: 0 0 10px var(--color-primary-glow);
+        }
+
+        .btn-toggle.active-cr {
+            background: var(--color-secondary);
+            border-color: var(--color-secondary);
+            box-shadow: 0 0 10px var(--color-secondary-glow);
+        }
+
+        /* 3단계 토글 (None/30m/60m) */
+        .iso-btn-group {
+            display: flex;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 2px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .btn-iso {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-iso.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+        }
+
+        /* 비교 통계 테이블 */
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stats-table th {
+            text-align: left;
+            padding: 8px 6px;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1.5px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stats-table td {
+            padding: 8px 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-weight: 500;
+        }
+
+        .stats-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .stats-table td.metric-name {
+            color: #cbd5e1;
+        }
+
+        .stats-table td.val-pg {
+            color: #60a5fa;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .stats-table td.val-cr {
+            color: #ff9d5c;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .stats-table tr.sub-header td {
+            font-weight: 700;
+            color: #60a5fa;
+            background: rgba(59, 130, 246, 0.05);
+            padding: 6px;
+            border-bottom: 1.5px solid rgba(59, 130, 246, 0.2);
+        }
+        
+        .stats-table tr.sub-header.cr-sub td {
+            color: #f97316;
+            background: rgba(249, 115, 22, 0.05);
+            border-bottom: 1.5px solid rgba(249, 115, 22, 0.2);
+        }
+
+        /* 차트 영역 */
+        .chart-box {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 20px;
+        }
+
+        /* 인사이트 카드 */
+        .insight-card {
+            background: rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.12);
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #cbd5e1;
+        }
+
+        .insight-card.cr-style {
+            background: rgba(249, 115, 22, 0.05);
+            border-color: rgba(249, 115, 22, 0.12);
+        }
+
+        /* 지도 스타일 토글 */
+        .map-style-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 10px;
+            z-index: 1000;
+            padding: 4px;
+            display: flex;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .map-style-toggle button {
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .map-style-toggle button.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+        }
+
+        /* 범례 */
+        .info.legend {
+            background: var(--bg-glass) !important;
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 12px;
+            padding: 14px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            line-height: 1.5em;
+            color: var(--text-main) !important;
+            font-size: 11px;
+        }
+
+        .info.legend h4 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 4px;
+        }
+
+        .legend-item {
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            display: inline-block;
+            margin-right: 8px;
+            border-radius: 2px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* 팝업 스타일링 */
+        .leaflet-popup-content-wrapper {
+            background: rgba(9, 13, 22, 0.95) !important;
+            backdrop-filter: blur(8px);
+            color: #f1f5f9 !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6) !important;
+            padding: 4px;
+        }
+
+        .leaflet-popup-tip {
+            background: rgba(9, 13, 22, 0.95) !important;
+        }
+
+        .popup-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #60a5fa;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 6px;
+            margin-bottom: 6px;
+        }
+        
+        .popup-row {
+            font-size: 11px;
+            margin-bottom: 3px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .popup-label {
+            color: var(--text-muted);
+            margin-right: 15px;
+        }
+
+        .popup-value {
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 사이드바 패널 -->
+    <div class="sidebar">
+        <header>
+            <h1 id="mainTitle">판교 vs 청라 비교분석 시스템</h1>
+            <div class="subtitle">데이터로 진단하는 업무지구의 성공과 실패</div>
+        </header>
+
+        <!-- 컨트롤그룹: 지역이동 및 등시간권 -->
+        <div class="control-group">
+            <div class="control-label">분석 대상 업무지구 초점</div>
+            <div class="btn-toggle-group">
+                <button id="btnPangyo" class="btn-toggle active-pg" onclick="flyToRegion('pangyo')">판교테크노밸리</button>
+                <button id="btnCheongna" class="btn-toggle" onclick="flyToRegion('cheongna')">청라국제업무지구</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">대중교통 등시간권 (Isochrone) 레이어</div>
+            <div class="iso-btn-group">
+                <button id="btnIsoNone" class="btn-iso active" onclick="setIsochrone('none')">해제</button>
+                <button id="btnIso30" class="btn-iso" onclick="setIsochrone('30')">30분 권역</button>
+                <button id="btnIso60" class="btn-iso" onclick="setIsochrone('60')">60분 권역</button>
+            </div>
+        </div>
+
+        <!-- 비교 통계표 -->
+        <div class="section-title">정량 지표 비교분석 패널</div>
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th>분석 정량 지표</th>
+                    <th style="text-align: right;">판교 (Pangyo)</th>
+                    <th style="text-align: right;">청라 (Cheongna)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="sub-header"><td colspan="3">1. 토지이용 지표 (Land Use)</td></tr>
+                <tr>
+                    <td class="metric-name">물리적 면적 (Area)</td>
+                    <td id="m-area-pg" class="val-pg">-</td>
+                    <td id="m-area-cr" class="val-cr">-</td>
+                </tr>
+                <tr>
+                    <td class="metric-name">총 개발 필지수 (Parcels)</td>
+                    <td id="m-parcels-pg" class="val-pg">-</td>
+                    <td id="m-parcels-cr" class="val-cr">-</td>
+                </tr>
+                <tr>
+                    <td class="metric-name">구역 평균 용적률 (FAR)</td>
+                    <td id="m-far-pg" class="val-pg">-</td>
+                    <td id="m-far-cr" class="val-cr">-</td>
+                </tr>
+                <tr>
+                    <td class="metric-name">토지이용 혼합도 (LUM)</td>
+                    <td id="m-lum-pg" class="val-pg">-</td>
+                    <td id="m-lum-cr" class="val-cr">-</td>
+                </tr>
+                <tr>
+                    <td class="metric-name">공지 필지 비율 (Vacant)</td>
+                    <td id="m-vacant-pg" class="val-pg">-</td>
+                    <td id="m-vacant-cr" class="val-cr">-</td>
+                </tr>
+
+                <tr class="sub-header"><td colspan="3">2. 인구사회 및 자족성 지표 (Socio-demographics)</td></tr>
+                <tr>
+                    <td class="metric-name">구역 내 상주인구 (Residents)</td>
+                    <td id="m-pop-pg" class="val-pg">-</td>
+                    <td id="m-pop-cr" class="val-cr">-</td>
+                </tr>
+                <tr>
+                    <td class="metric-name">구역 내 종사자수 (Jobs)</td>
+                    <td id="m-work-pg" class="val-pg">-</td>
+                    <td id="m-work-cr" class="val-cr">-</td>
+                </tr>
+                <tr>
+                    <td class="metric-name">구역 내 사업체수 (Businesses)</td>
+                    <td id="m-biz-pg" class="val-pg">-</td>
+                    <td id="m-biz-cr" class="val-cr">-</td>
+                </tr>
+                <tr>
+                    <td class="metric-name">직주비 (Job/Resident Ratio)</td>
+                    <td id="m-wj-pg" class="val-pg">-</td>
+                    <td id="m-wj-cr" class="val-cr">-</td>
+                </tr>
+
+                <tr class="sub-header"><td colspan="3">3. 광역 접근성 지표 (Transport Reachability)</td></tr>
+                <tr id="row-reach-pop">
+                    <td class="metric-name" id="label-reach-pop">대중교통 도달가능 인구</td>
+                    <td id="m-rpop-pg" class="val-pg">-</td>
+                    <td id="m-rcr-pop" class="val-cr">-</td>
+                </tr>
+                <tr id="row-reach-work">
+                    <td class="metric-name" id="label-reach-work">대중교통 도달가능 종사자</td>
+                    <td id="m-rwork-pg" class="val-pg">-</td>
+                    <td id="m-rcr-work" class="val-cr">-</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- 용도 비율 차트 -->
+        <div class="section-title">건축물 주용도 비율 비교 (연면적 기준)</div>
+        <div class="chart-box">
+            <canvas id="useChart" height="200"></canvas>
+        </div>
+
+        <!-- 인사이트 요약 -->
+        <div class="section-title" id="insightTitle">판교테크노밸리 진단 요약</div>
+        <div class="insight-card" id="insightText">
+            데이터 로딩 중...
+        </div>
+    </div>
+
+    <!-- 배경 맵 테마 토글 -->
+    <div class="map-style-toggle">
+        <button id="btnThemeLight" onclick="setMapTheme('light')">Light</button>
+        <button id="btnThemeDark" class="active" onclick="setMapTheme('dark')">Dark</button>
+    </div>
+
+    <!-- 지도 컨테이너 -->
+    <div id="map"></div>
+
+    <script>
+        // 1. 지도 초기화 (기본 판교 중심)
+        var map = L.map('map', { zoomControl: false }).setView([37.403, 127.105], 15);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // 2. 배경 지도 타일셋
+        var baseMaps = {
+            light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 20
+            }),
+            dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 20
+            })
+        };
+        baseMaps.dark.addTo(map);
+
+        // 3. 변수 정의 및 초기 상태
+        var activeRegion = 'pangyo';
+        var activeIso = 'none';
+        var statsData = null;
+        var useChartInstance = null;
+
+        var regionViews = {
+            pangyo: { center: [37.403, 127.105], zoom: 15 },
+            cheongna: { center: [37.528, 126.625], zoom: 15 }
+        };
+
+        var insights = {
+            pangyo: "<b>[판교테크노밸리: 클러스터형 성공 모델]</b><br>업무시설(57.8%) 및 교육연구시설(27.6%)이 연면적의 85% 이상을 차지하며 연구개발 및 비즈니스에 완전히 특화된 공간구조를 지닙니다. 강남 및 수도권 전역을 잇는 강력한 신분당선 철도교통망을 바탕으로 60분 내 617만 명의 통근 인력에 접근 가능한 거대한 광역 노동시장권을 형성하고 있어 최고의 혁신 클러스터가 될 수 있었습니다.",
+            cheongna: "<b>[청라국제업무지구: 베드타운형 지연 모델]</b><br>업무용 토지로 기획되었음에도 실제 개발 연면적의 64.4%가 아파트 등 순수 주거시설로 채워진 심각한 직주 불균형 상태입니다. 수도권 외곽(인천 서구)에 위치하고 공항철도 의존도가 높아 60분 내 도달 가능한 종사자수가 판교의 절반 수준(340만 명)에 그칩니다. 자족 기능이 약화되어 거대 베드타운화된 특성을 보입니다."
+        };
+
+        // 용도별 컬러 코드
+        function getBuildingColor(useType) {
+            switch (useType) {
+                case '업무시설': return '#3b82f6';
+                case '교육연구시설': return '#8b5cf6';
+                case '주거시설': return '#ef4444';
+                case '오피스텔(사실상 주거)': return '#f97316';
+                case '상업/근생시설': return '#10b981';
+                default: return '#6b7280';
+            }
+        }
+
+        // GeoJSON 레이어 컨테이너들
+        var boundaryLayers = { pangyo: null, cheongna: null };
+        var buildingLayers = { pangyo: null, cheongna: null };
+        var isoLayers = {
+            pangyo: { '30': null, '60': null },
+            cheongna: { '30': null, '60': null }
+        };
+
+        // 4. 데이터 비동기 로드 및 바인딩
+        Promise.all([
+            fetch('summary_stats.json').then(res => res.json()),
+            fetch('pangyo_boundary.geojson').then(res => res.json()),
+            fetch('cheongna_boundary.geojson').then(res => res.json()),
+            fetch('pangyo_buildings.geojson').then(res => res.json()),
+            fetch('cheongna_buildings.geojson').then(res => res.json()),
+            fetch('pangyo_iso_30.geojson').then(res => res.json()),
+            fetch('pangyo_iso_60.geojson').then(res => res.json()),
+            fetch('cheongna_iso_30.geojson').then(res => res.json()),
+            fetch('cheongna_iso_60.geojson').then(res => res.json())
+        ]).then(([
+            stats, pg_bound, cr_bound, pg_bldgs, cr_bldgs,
+            pg_i30, pg_i60, cr_i30, cr_i60
+        ]) => {
+            statsData = stats;
+            
+            // 데이터 수치 채우기
+            updateStaticStatsTable();
+            updateChart();
+            updateInsight();
+
+            // 1. 구역계 레이어 생성
+            boundaryLayers.pangyo = L.geoJSON(pg_bound, {
+                style: { color: '#3b82f6', weight: 2.5, fillOpacity: 0.0, dashArray: '4' }
+            }).addTo(map);
+
+            boundaryLayers.cheongna = L.geoJSON(cr_bound, {
+                style: { color: '#f97316', weight: 2.5, fillOpacity: 0.0, dashArray: '4' }
+            });
+
+            // 2. 건물 레이어 생성
+            buildingLayers.pangyo = L.geoJSON(pg_bldgs, {
+                style: function(f) {
+                    return {
+                        fillColor: getBuildingColor(f.properties.비교용도),
+                        weight: 0.8, color: '#0d1423', fillOpacity: 0.75
+                    };
+                },
+                onEachFeature: function(f, l) {
+                    l.bindPopup(`
+                        <div class="popup-title">판교 필지 상세정보</div>
+                        <div class="popup-row"><span class="popup-label">용도 분류:</span><span class="popup-value" style="color:${getBuildingColor(f.properties.비교용도)}">${f.properties.비교용도}</span></div>
+                        <div class="popup-row"><span class="popup-label">상세 용도:</span><span class="popup-value">${f.properties.RAW_USE || '미기재'}</span></div>
+                        <div class="popup-row"><span class="popup-label">연면적 (m²):</span><span class="popup-value">${f.properties.FLOOR_AREA ? f.properties.FLOOR_AREA.toLocaleString(undefined, {maximumFractionDigits:1}) : '0'}</span></div>
+                        <div class="popup-row"><span class="popup-label">계산 용적률:</span><span class="popup-value">${f.properties.FAR ? f.properties.FAR.toFixed(1) + '%' : '0%'}</span></div>
+                        <div class="popup-row"><span class="popup-label">지번 주소:</span><span class="popup-value">삼평동 ${f.properties.JIBUN || ''}</span></div>
+                    `);
+                }
+            }).addTo(map);
+
+            buildingLayers.cheongna = L.geoJSON(cr_bldgs, {
+                style: function(f) {
+                    return {
+                        fillColor: getBuildingColor(f.properties.비교용도),
+                        weight: 0.8, color: '#0d1423', fillOpacity: 0.75
+                    };
+                },
+                onEachFeature: function(f, l) {
+                    l.bindPopup(`
+                        <div class="popup-title">청라 필지 상세정보</div>
+                        <div class="popup-row"><span class="popup-label">용도 분류:</span><span class="popup-value" style="color:${getBuildingColor(f.properties.비교용도)}">${f.properties.비교용도}</span></div>
+                        <div class="popup-row"><span class="popup-label">상세 용도:</span><span class="popup-value">${f.properties.RAW_USE || '미기재'}</span></div>
+                        <div class="popup-row"><span class="popup-label">연면적 (m²):</span><span class="popup-value">${f.properties.FLOOR_AREA ? f.properties.FLOOR_AREA.toLocaleString(undefined, {maximumFractionDigits:1}) : '0'}</span></div>
+                        <div class="popup-row"><span class="popup-label">계산 용적률:</span><span class="popup-value">${f.properties.FAR ? f.properties.FAR.toFixed(1) + '%' : '0%'}</span></div>
+                        <div class="popup-row"><span class="popup-label">지번 주소:</span><span class="popup-value">인천서구 ${f.properties.JIBUN || ''}</span></div>
+                    `);
+                }
+            });
+
+            // 3. 등시간권 레이어 생성
+            isoLayers.pangyo['30'] = L.geoJSON(pg_i30, {
+                style: { color: '#2563eb', fillColor: '#3b82f6', weight: 1.5, fillOpacity: 0.15 }
+            });
+            isoLayers.pangyo['60'] = L.geoJSON(pg_i60, {
+                style: { color: '#1d4ed8', fillColor: '#2563eb', weight: 1.5, fillOpacity: 0.08 }
+            });
+            isoLayers.cheongna['30'] = L.geoJSON(cr_i30, {
+                style: { color: '#ea580c', fillColor: '#f97316', weight: 1.5, fillOpacity: 0.15 }
+            });
+            isoLayers.cheongna['60'] = L.geoJSON(cr_i60, {
+                style: { color: '#c2410c', fillColor: '#ea580c', weight: 1.5, fillOpacity: 0.08 }
+            });
+
+            console.log("모든 데이터 레이어가 정상적으로 맵핑되었습니다.");
+        }).catch(err => console.error("데이터 로딩 중 에러:", err));
+
+        // 5. 테이블 및 통계 업데이트
+        function updateStaticStatsTable() {
+            if (!statsData) return;
+            var pg = statsData.pangyo;
+            var cr = statsData.cheongna;
+
+            // 토지이용
+            document.getElementById('m-area-pg').innerText = pg.area_km2.toFixed(3) + " km²";
+            document.getElementById('m-area-cr').innerText = cr.area_km2.toFixed(3) + " km²";
+            document.getElementById('m-parcels-pg').innerText = pg.parcels.toLocaleString() + " 개";
+            document.getElementById('m-parcels-cr').innerText = cr.parcels.toLocaleString() + " 개";
+            document.getElementById('m-far-pg').innerText = pg.avg_far.toFixed(1) + " %";
+            document.getElementById('m-far-cr').innerText = cr.avg_far.toFixed(1) + " %";
+            document.getElementById('m-lum-pg').innerText = pg.lum.toFixed(4);
+            document.getElementById('m-lum-cr').innerText = cr.lum.toFixed(4);
+            document.getElementById('m-vacant-pg').innerText = pg.vacant_ratio.toFixed(1) + " %";
+            document.getElementById('m-vacant-cr').innerText = cr.vacant_ratio.toFixed(1) + " %";
+
+            // 인구사회
+            document.getElementById('m-pop-pg').innerText = Math.round(pg.dist_pop).toLocaleString() + " 명";
+            document.getElementById('m-pop-cr').innerText = Math.round(cr.dist_pop).toLocaleString() + " 명";
+            document.getElementById('m-work-pg').innerText = Math.round(pg.dist_work).toLocaleString() + " 명";
+            document.getElementById('m-work-cr').innerText = Math.round(cr.dist_work).toLocaleString() + " 명";
+            document.getElementById('m-biz-pg').innerText = Math.round(pg.dist_biz).toLocaleString() + " 개";
+            document.getElementById('m-biz-cr').innerText = Math.round(cr.dist_biz).toLocaleString() + " 개";
+            document.getElementById('m-wj-pg').innerText = pg.wj_ratio.toFixed(2);
+            document.getElementById('m-wj-cr').innerText = cr.wj_ratio.toFixed(2);
+
+            // 광역접근성 기본값은 60분으로 표출
+            updateReachableStats('60');
+        }
+
+        function updateReachableStats(time) {
+            if (!statsData) return;
+            var pg = statsData.pangyo;
+            var cr = statsData.cheongna;
+
+            var labelPop = document.getElementById('label-reach-pop');
+            var labelWork = document.getElementById('label-reach-work');
+            
+            if (time === '30') {
+                labelPop.innerText = "대중교통 30분 도달인구";
+                labelWork.innerText = "대중교통 30분 도달종사자";
+                document.getElementById('m-rpop-pg').innerText = pg.pop_30m.toLocaleString() + " 명";
+                document.getElementById('m-rcr-pop').innerText = cr.pop_30m.toLocaleString() + " 명";
+                document.getElementById('m-rwork-pg').innerText = pg.work_30m.toLocaleString() + " 명";
+                document.getElementById('m-rcr-work').innerText = cr.work_30m.toLocaleString() + " 명";
+            } else if (time === '60') {
+                labelPop.innerText = "대중교통 60분 도달인구";
+                labelWork.innerText = "대중교통 60분 도달종사자";
+                document.getElementById('m-rpop-pg').innerText = pg.pop_60m.toLocaleString() + " 명";
+                document.getElementById('m-rcr-pop').innerText = cr.pop_60m.toLocaleString() + " 명";
+                document.getElementById('m-rwork-pg').innerText = pg.work_60m.toLocaleString() + " 명";
+                document.getElementById('m-rcr-work').innerText = cr.work_60m.toLocaleString() + " 명";
+            } else {
+                labelPop.innerText = "도달가능인구 (등시간권 미선택)";
+                labelWork.innerText = "도달가능종사자 (등시간권 미선택)";
+                document.getElementById('m-rpop-pg').innerText = "-";
+                document.getElementById('m-rcr-pop').innerText = "-";
+                document.getElementById('m-rwork-pg').innerText = "-";
+                document.getElementById('m-rcr-work').innerText = "-";
+            }
+        }
+
+        // ChartJS 업데이트
+        function updateChart() {
+            if (!statsData) return;
+            var pgRatios = statsData.pangyo.use_ratios;
+            var crRatios = statsData.cheongna.use_ratios;
+
+            var labels = ['업무시설', '교육연구', '주거시설', '상업/근생', '기타'];
+            var pgData = [
+                pgRatios['업무시설'],
+                pgRatios['교육연구시설'],
+                pgRatios['주거시설'] + pgRatios['오피스텔(사실상 주거)'],
+                pgRatios['상업/근생시설'],
+                pgRatios['기타']
+            ];
+            var crData = [
+                crRatios['업무시설'],
+                crRatios['교육연구시설'],
+                crRatios['주거시설'] + crRatios['오피스텔(사실상 주거)'],
+                crRatios['상업/근생시설'],
+                crRatios['기타']
+            ];
+
+            var ctx = document.getElementById('useChart').getContext('2d');
+            if (useChartInstance) {
+                useChartInstance.destroy();
+            }
+
+            useChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '판교 (Pangyo)',
+                            data: pgData,
+                            backgroundColor: '#3b82f6',
+                            borderColor: '#1d4ed8',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '청라 (Cheongna)',
+                            data: crData,
+                            backgroundColor: '#f97316',
+                            borderColor: '#c2410c',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#94a3b8', font: { family: 'Outfit', size: 10 } }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#94a3b8', font: { family: 'Noto Sans KR', size: 10 } },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        },
+                        y: {
+                            ticks: { 
+                                color: '#94a3b8', 
+                                font: { family: 'Outfit', size: 10 },
+                                callback: function(value) { return value + '%'; }
+                            },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateInsight() {
+            var title = document.getElementById('insightTitle');
+            var text = document.getElementById('insightText');
+            var card = document.querySelector('.insight-card');
+
+            if (activeRegion === 'pangyo') {
+                title.innerText = "판교테크노밸리 진단 요약";
+                text.innerHTML = insights.pangyo;
+                card.classList.remove('cr-style');
+            } else {
+                title.innerText = "청라국제업무지구 진단 요약";
+                text.innerHTML = insights.cheongna;
+                card.classList.add('cr-style');
+            }
+        }
+
+        // 6. 인터랙티브 이벤트 핸들러
+        function flyToRegion(regionId) {
+            activeRegion = regionId;
+
+            // 버튼 스타일 전환
+            document.getElementById('btnPangyo').classList.toggle('active-pg', regionId === 'pangyo');
+            document.getElementById('btnCheongna').classList.toggle('active-cr', regionId === 'cheongna');
+
+            // 지도 비행
+            var view = regionViews[regionId];
+            map.flyTo(view.center, view.zoom, { animate: true, duration: 1.5 });
+
+            // 지도 레이어 토글
+            if (regionId === 'pangyo') {
+                if (buildingLayers.pangyo) map.addLayer(buildingLayers.pangyo);
+                if (boundaryLayers.pangyo) map.addLayer(boundaryLayers.pangyo);
+                if (buildingLayers.cheongna) map.removeLayer(buildingLayers.cheongna);
+                if (boundaryLayers.cheongna) map.removeLayer(boundaryLayers.cheongna);
+            } else {
+                if (buildingLayers.cheongna) map.addLayer(buildingLayers.cheongna);
+                if (boundaryLayers.cheongna) map.addLayer(boundaryLayers.cheongna);
+                if (buildingLayers.pangyo) map.removeLayer(buildingLayers.pangyo);
+                if (boundaryLayers.pangyo) map.removeLayer(boundaryLayers.pangyo);
+            }
+
+            // 등시간권 레이어 갱신
+            applyIsochrone();
+            updateInsight();
+        }
+
+        function setIsochrone(isoVal) {
+            activeIso = isoVal;
+            
+            // 버튼 액티브 스타일 전환
+            document.getElementById('btnIsoNone').classList.toggle('active', isoVal === 'none');
+            document.getElementById('btnIso30').classList.toggle('active', isoVal === '30');
+            document.getElementById('btnIso60').classList.toggle('active', isoVal === '60');
+
+            applyIsochrone();
+            updateReachableStats(isoVal);
+        }
+
+        function applyIsochrone() {
+            // 모든 등시간권 레이어 우선 끄기
+            for (var reg in isoLayers) {
+                for (var key in isoLayers[reg]) {
+                    if (isoLayers[reg][key]) {
+                        map.removeLayer(isoLayers[reg][key]);
+                    }
+                }
+            }
+
+            // 활성 상태인 등시간권 켜기
+            if (activeIso !== 'none') {
+                var layer = isoLayers[activeRegion][activeIso];
+                if (layer) {
+                    map.addLayer(layer);
+                }
+            }
+        }
+
+        // 맵 테마 변경
+        function setMapTheme(theme) {
+            document.getElementById('btnThemeLight').classList.toggle('active', theme === 'light');
+            document.getElementById('btnThemeDark').classList.toggle('active', theme === 'dark');
+            
+            if (theme === 'light') {
+                map.removeLayer(baseMaps.dark);
+                map.addLayer(baseMaps.light);
+            } else {
+                map.removeLayer(baseMaps.light);
+                map.addLayer(baseMaps.dark);
+            }
+        }
+
+        // 7. 범례 제어
+        var legend = L.control({position: 'bottomright'});
+        legend.onAdd = function (map) {
+            var div = L.DomUtil.create('div', 'info legend');
+            var uses = ['업무시설', '교육연구시설', '주거시설', '오피스텔(사실상 주거)', '상업/근생시설', '기타'];
+            
+            div.innerHTML += '<h4>필지 주용도</h4>';
+            for (var i = 0; i < uses.length; i++) {
+                div.innerHTML += `
+                    <div class="legend-item">
+                        <span class="legend-color" style="background:${getBuildingColor(uses[i])}"></span>
+                        ${uses[i]}
+                    </div>
+                `;
+            }
+            return div;
+        };
+        legend.addTo(map);
+
+    </script>
+</body>
+</html>
